@@ -3,7 +3,7 @@ module "tags" {
   version = "1.0.0"
 
   enforce_case = "LOWER"
-  names        = "sundar"
+  names        = [var.name]
   tags         = var.tags
 }
 
