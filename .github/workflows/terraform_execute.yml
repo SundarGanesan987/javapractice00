@@ -1,0 +1,64 @@
+name: Terraform Plan & ServiceNow Change Request
+
+on:
+  push:
+    branches:
+      - main  # Change this to 'master' if your default branch uses that name
+    paths:
+      - 'main.tf'
+
+jobs:
+  terraform-and-snow:
+    runs-on: ubuntu-latest
+    
+    # Setting up environment variables for ServiceNow and Terraform
+    env:
+      SNOW_INSTANCE: ${{ secrets.SNOW_INSTANCE }} # e.g., dev12345
+      SNOW_USERNAME: ${{ secrets.SNOW_SERVICE_ACCOUNT_USER }}
+      SNOW_PASSWORD: ${{ secrets.SNOW_SERVICE_ACCOUNT_PASS }}
+
+    steps:
+    # 1. Checkout the repository code
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 2. Install and configure Terraform
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0 # Specify your required Terraform version
+        # If using Terraform Cloud/Enterprise, uncomment the line below:
+        # cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+    # 3. Initialize Terraform (installs providers and configures backend)
+    - name: Terraform Init
+      run: terraform init
+
+    # 4. Generate the Terraform Plan and save it to a file
+    - name: Terraform Plan
+      id: plan
+      run: terraform plan -no-color -out=tfplan
+
+    # 5. Create a Change Request in ServiceNow via REST API
+    - name: Create ServiceNow Change Request
+      id: snow_api
+      run: |
+        # We use ServiceNow's Standard Change Request API (table API)
+        # You can adjust the JSON payload fields (short_description, description, etc.) to match your ServiceNow schema.
+        
+        RESPONSE=$(curl -X POST \
+          -H "Content-Type: application/json" \
+          -H "Accept: application/json" \
+          -u "$SNOW_USERNAME:$SNOW_PASSWORD" \
+          https://$SNOW_://service-now.com \
+          -d '{
+            "short_description": "Automated TF Plan Infrastructure Change",
+            "description": "Triggered by GitHub Actions workflow due to updates in main.tf. Review Github run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "justification": "Automated deployment synchronization.",
+            "priority": "3",
+            "risk": "4"
+          }')
+          
+        # Extract the Change Request Number from the response for visibility in logs
+        CHG_NUMBER=$(echo $RESPONSE | jq -r '.result.number')
+        echo "Created ServiceNow Change Request: $CHG_NUMBER"
